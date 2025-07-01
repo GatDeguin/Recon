@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Detección de Acciones</title>
+<style>
+body {font-family: Arial, sans-serif; text-align:center; margin:0;}
+#container {position: relative; display: inline-block;}
+#output_canvas {position: absolute; top:0; left:0;}
+#info {background: rgba(245,117,16,0.8); color:white; padding:10px; position:absolute; top:10px; left:10px; border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="container">
+<video id="video" playsinline style="width:100%; height:auto;"></video>
+<canvas id="output_canvas"></canvas>
+<div id="info">Cargando...</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script>
+const videoElement = document.getElementById('video');
+const canvasElement = document.getElementById('output_canvas');
+const canvasCtx = canvasElement.getContext('2d');
+const infoElement = document.getElementById('info');
+const SEQUENCE_LENGTH = 30;
+const ACTIONS = ['hola', 'gracias', 'te amo'];
+let model;
+let sequence = [];
+
+async function loadModel() {
+    try {
+        model = await tf.loadLayersModel('model/model.json');
+        infoElement.innerText = 'Modelo cargado';
+    } catch (e) {
+        infoElement.innerText = 'No se pudo cargar el modelo';
+        console.error(e);
+    }
+}
+
+function setupHolistic() {
+    const holistic = new Holistic({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    });
+    holistic.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        refineFaceLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    holistic.onResults(onResults);
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await holistic.send({image: videoElement});
+        },
+        width: 640,
+        height: 480
+    });
+    camera.start();
+}
+
+function extractKeypoints(results) {
+    const keypoints = [];
+    if (results.poseLandmarks) {
+        results.poseLandmarks.forEach(lm => {
+            keypoints.push(lm.x, lm.y, lm.z, lm.visibility ?? 0);
+        });
+    } else {
+        for (let i=0;i<33*4;i++) keypoints.push(0);
+    }
+    if (results.faceLandmarks) {
+        results.faceLandmarks.forEach(lm => {
+            keypoints.push(lm.x, lm.y, lm.z);
+        });
+    } else {
+        for (let i=0;i<468*3;i++) keypoints.push(0);
+    }
+    if (results.leftHandLandmarks) {
+        results.leftHandLandmarks.forEach(lm => {
+            keypoints.push(lm.x, lm.y, lm.z);
+        });
+    } else {
+        for (let i=0;i<21*3;i++) keypoints.push(0);
+    }
+    if (results.rightHandLandmarks) {
+        results.rightHandLandmarks.forEach(lm => {
+            keypoints.push(lm.x, lm.y, lm.z);
+        });
+    } else {
+        for (let i=0;i<21*3;i++) keypoints.push(0);
+    }
+    return keypoints;
+}
+
+function drawLandmarks(results) {
+    canvasCtx.save();
+    canvasCtx.clearRect(0,0,canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image,0,0, canvasElement.width, canvasElement.height);
+    if (results.faceLandmarks) {
+        drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, {color:'#C0C0C070', lineWidth:1});
+        drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_CONTOURS, {color:'#FF2C35', lineWidth:1});
+    }
+    if (results.poseLandmarks) {
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS,{color:'#00FF00', lineWidth:2});
+    }
+    if (results.leftHandLandmarks) {
+        drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS,{color:'#CC0000', lineWidth:2});
+    }
+    if (results.rightHandLandmarks) {
+        drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS,{color:'#0000CC', lineWidth:2});
+    }
+    canvasCtx.restore();
+}
+
+function predictAction() {
+    if (!model || sequence.length !== SEQUENCE_LENGTH) return;
+    const input = tf.tensor(sequence).expandDims(0);
+    const prediction = model.predict(input);
+    const data = prediction.dataSync();
+    const maxIndex = data.indexOf(Math.max(...data));
+    const confidence = data[maxIndex];
+    infoElement.innerText = `${ACTIONS[maxIndex].toUpperCase()} ${(confidence*100).toFixed(1)}%`;
+    input.dispose();
+    prediction.dispose();
+}
+
+function onResults(results) {
+    drawLandmarks(results);
+    const keypoints = extractKeypoints(results);
+    sequence.push(keypoints);
+    if (sequence.length > SEQUENCE_LENGTH) sequence.shift();
+    predictAction();
+}
+
+async function start() {
+    await loadModel();
+    navigator.mediaDevices.getUserMedia({video:true}).then(stream => {
+        videoElement.srcObject = stream;
+        videoElement.play();
+        videoElement.onloadedmetadata = () => {
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            setupHolistic();
+        };
+    }).catch(err => {
+        infoElement.innerText = 'Error al acceder a la cámara';
+        console.error(err);
+    });
+}
+
+window.addEventListener('DOMContentLoaded', start);
+</script>
+</body>
+</html>
