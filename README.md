@@ -4,7 +4,18 @@ A simple demo for Argentinian Sign Language (LSA) action recognition. The reposi
 
 ## HTML demo
 
-Open `index.html` in a modern web browser. The page loads TensorFlow.js and MediaPipe Holistic from CDNs, requests webcam access and predicts actions using `model.json`.
+Before opening `index.html` you need a TensorFlow.js version of the model.  
+Convert `action.h5` with:
+
+```bash
+pip install tensorflowjs
+tensorflowjs_converter --input_format=keras action.h5 model
+```
+
+Copy the generated `model.json` and weight files from the `model` directory next to
+`index.html`. Then open the page in a modern browser. It will load TensorFlow.js
+and MediaPipe Holistic from CDNs, request webcam access and predict actions using
+`model.json`.
 
 ## Python script
 
