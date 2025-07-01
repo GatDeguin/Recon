@@ -15,3 +15,8 @@ python action_detection3.py --model action.h5 --video 0
 ```
 
 Replace `0` with a path to a video file or another webcam index. Add `--output out.mp4` to save the annotated video.
+
+## Dataset
+
+The repository also contains a copy of the [LSA-T](LSA-T) continuous Argentinian Sign Language dataset. See `LSA-T/README.md` for download links and details about the data.
+
